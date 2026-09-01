@@ -4,13 +4,8 @@
 
 // 1. IMPORT MODULES
 // ================================================
-// Import the 'express' library (web framework)
 const express = require('express');
-
-// Import the 'fs' module (file system) to read/write JSON files
 const fs = require('fs');
-
-// Import the 'path' module to handle file paths safely
 const path = require('path');
 
 // Create an Express application instance
@@ -22,19 +17,32 @@ const PORT = 3000;
 // Define where submissions will be stored
 const SUBMISSIONS_FILE = path.join(__dirname, 'submissions.json');
 
+// ============================================
+// SECURITY CONSTANTS
+// ============================================
+
+// Maximum message length: 5000 characters
+// Prevents extremely long submissions from wasting disk space
+const MAX_MESSAGE_LENGTH = 5000;
+
+// Maximum location length: 100 characters
+// Keeps location field reasonable (city/district name)
+const MAX_LOCATION_LENGTH = 100;
+
+// Maximum number of submissions to keep in memory during writes
+// Prevents excessive memory usage with very large files
+const MAX_SUBMISSIONS_IN_MEMORY = 10000;
+
 
 // 2. MIDDLEWARE SETUP
 // ================================================
-// Middleware runs on every request before your route handlers
 
 // Parse incoming JSON data from requests
-// This allows us to read JSON from POST request bodies
-app.use(express.json());
+// limit: '10kb' prevents attackers from sending huge payloads
+// This protects against Denial of Service (DoS) attacks
+app.use(express.json({ limit: '10kb' }));
 
 // Serve static files (HTML, CSS, images, etc.) from the current directory
-// When someone visits /, it will serve index.html
-// When someone visits /style.css, it will serve style.css
-// This is how we serve our frontend
 app.use(express.static(__dirname));
 
 
@@ -43,44 +51,123 @@ app.use(express.static(__dirname));
 
 /**
  * Load all submissions from submissions.json
- * Returns an empty array if the file doesn't exist yet
+ * Includes error handling for missing/corrupted files
  */
 function loadSubmissions() {
   try {
     // Check if the submissions.json file exists
     if (fs.existsSync(SUBMISSIONS_FILE)) {
-      // Read the file and parse it as JSON
+      // Read the file
       const data = fs.readFileSync(SUBMISSIONS_FILE, 'utf-8');
-      return JSON.parse(data);
+      
+      // Parse it as JSON
+      const submissions = JSON.parse(data);
+      
+      // Validate it's actually an array
+      if (!Array.isArray(submissions)) {
+        console.error('submissions.json is not an array, returning empty list');
+        return [];
+      }
+      
+      return submissions;
     }
   } catch (err) {
-    console.error('Error loading submissions:', err);
+    // Log the error so we can debug it
+    console.error('Error loading submissions:', err.message);
+    
+    // If file is corrupted, log a warning but don't crash
+    if (err instanceof SyntaxError) {
+      console.error('submissions.json is corrupted JSON. Starting fresh.');
+    }
   }
+  
   // Return empty array if file doesn't exist or has errors
   return [];
 }
 
 /**
  * Save submissions to submissions.json
- * Takes an array of submissions and writes it to disk
+ * Includes error handling and prevents concurrent write issues
  */
 function saveSubmissions(submissions) {
   try {
-    // Convert the array to JSON string with 2-space indentation (for readability)
+    // Validate submissions before saving
+    if (!Array.isArray(submissions)) {
+      throw new Error('Submissions must be an array');
+    }
+    
+    // Prevent the file from growing too large
+    if (submissions.length > MAX_SUBMISSIONS_IN_MEMORY) {
+      console.warn('Too many submissions, truncating oldest ones');
+      // Keep only the newest submissions
+      submissions = submissions.slice(-MAX_SUBMISSIONS_IN_MEMORY);
+    }
+    
+    // Convert to JSON with indentation (readable format)
     const json = JSON.stringify(submissions, null, 2);
-    // Write it to the submissions.json file
-    fs.writeFileSync(SUBMISSIONS_FILE, json, 'utf-8');
+    
+    // Write to a temporary file first
+    // This prevents corruption if the write is interrupted
+    const tempFile = SUBMISSIONS_FILE + '.tmp';
+    fs.writeFileSync(tempFile, json, 'utf-8');
+    
+    // If temp file was successful, rename it to the real file
+    // This is atomic (all-or-nothing) on most systems
+    fs.renameSync(tempFile, SUBMISSIONS_FILE);
+    
   } catch (err) {
-    console.error('Error saving submissions:', err);
+    console.error('Error saving submissions:', err.message);
+    // Don't throw error - just log it
+    // This prevents the server from crashing
   }
 }
 
 /**
  * Generate a unique ID for each submission
- * Uses timestamp + random number for simplicity
  */
 function generateId() {
   return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+/**
+ * Validate and sanitize submission data
+ * Returns object with { valid: boolean, error?: string }
+ */
+function validateSubmission(message, location) {
+  // Check message exists and is a string
+  if (typeof message !== 'string') {
+    return { valid: false, error: 'Message must be a string.' };
+  }
+  
+  // Check message is not empty
+  const trimmedMessage = message.trim();
+  if (trimmedMessage.length === 0) {
+    return { valid: false, error: 'Message cannot be empty.' };
+  }
+  
+  // Check message is not too long
+  if (trimmedMessage.length > MAX_MESSAGE_LENGTH) {
+    return { 
+      valid: false, 
+      error: `Message cannot exceed ${MAX_MESSAGE_LENGTH} characters.` 
+    };
+  }
+  
+  // Check location is a string if provided
+  if (location !== undefined && location !== null && typeof location !== 'string') {
+    return { valid: false, error: 'Location must be a string.' };
+  }
+  
+  // Check location is not too long
+  if (location && location.trim().length > MAX_LOCATION_LENGTH) {
+    return { 
+      valid: false, 
+      error: `Location cannot exceed ${MAX_LOCATION_LENGTH} characters.` 
+    };
+  }
+  
+  // All validations passed
+  return { valid: true };
 }
 
 
@@ -92,45 +179,51 @@ function generateId() {
  * Serves the main HTML page
  */
 app.get('/', (req, res) => {
-  // Send the index.html file to the browser
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 /**
  * GET /api/submissions
- * Returns all approved submissions as JSON
+ * Returns all submissions as JSON
+ * No validation needed - this is read-only
  */
 app.get('/api/submissions', (req, res) => {
-  // Load all submissions from the JSON file
   const submissions = loadSubmissions();
-  
-  // Send them back to the browser as JSON
-  // This is what the frontend fetch request receives
   res.json(submissions);
 });
 
 /**
  * POST /api/submissions
  * Accepts a new submission and stores it
- * Body should contain: { message, location (optional) }
+ * 
+ * Validates:
+ * - Request body is valid JSON
+ * - Message is not empty
+ * - Message is not too long
+ * - Location is not too long
+ * - All fields are strings
  */
 app.post('/api/submissions', (req, res) => {
-  // Extract message and location from the request body
-  const { message, location } = req.body;
-  
-  // VALIDATION: Check if message is empty or missing
-  if (!message || message.trim() === '') {
-    // Return a 400 (Bad Request) error to the client
+  // Validate that req.body exists
+  if (!req.body) {
     return res.status(400).json({
-      error: 'Message is required and cannot be empty.'
+      error: 'Request body is missing.'
     });
   }
   
-  // Create a new submission object with:
-  // - id: unique identifier
-  // - message: the user's message (trimmed to remove extra whitespace)
-  // - location: optional location (or empty string if not provided)
-  // - createdAt: current timestamp in ISO format (e.g., 2024-01-15T10:30:00.000Z)
+  // Extract message and location
+  const { message, location } = req.body;
+  
+  // Validate submission data
+  const validation = validateSubmission(message, location);
+  if (!validation.valid) {
+    return res.status(400).json({
+      error: validation.error
+    });
+  }
+  
+  // Create the submission object
+  // All data is trimmed to remove extra whitespace
   const newSubmission = {
     id: generateId(),
     message: message.trim(),
@@ -138,21 +231,29 @@ app.post('/api/submissions', (req, res) => {
     createdAt: new Date().toISOString()
   };
   
-  // Load existing submissions from the JSON file
-  const submissions = loadSubmissions();
-  
-  // Add the new submission to the array
-  submissions.push(newSubmission);
-  
-  // Save all submissions (old + new) back to the JSON file
-  saveSubmissions(submissions);
-  
-  // Send a success response back to the browser
-  // Status 201 means "Created" (a new resource was made)
-  res.status(201).json({
-    success: true,
-    message: 'Submission received and stored.'
-  });
+  try {
+    // Load existing submissions
+    const submissions = loadSubmissions();
+    
+    // Add the new submission
+    submissions.push(newSubmission);
+    
+    // Save back to file
+    saveSubmissions(submissions);
+    
+    // Send success response
+    res.status(201).json({
+      success: true,
+      message: 'Submission received and stored.'
+    });
+    
+  } catch (err) {
+    // If something goes wrong, log it and return error
+    console.error('Error processing submission:', err.message);
+    return res.status(500).json({
+      error: 'Failed to process submission. Please try again later.'
+    });
+  }
 });
 
 
@@ -160,8 +261,23 @@ app.post('/api/submissions', (req, res) => {
 // ================================================
 
 /**
+ * Handle malformed JSON requests
+ * Express calls this when JSON parsing fails
+ */
+app.use((err, req, res, next) => {
+  // Check if error is a JSON parsing error
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({
+      error: 'Invalid JSON in request body.'
+    });
+  }
+  
+  // Pass error to next handler if not JSON error
+  next(err);
+});
+
+/**
  * Handle 404 errors (route not found)
- * This runs if none of the routes above matched
  */
 app.use((req, res) => {
   res.status(404).json({
@@ -169,11 +285,35 @@ app.use((req, res) => {
   });
 });
 
+/**
+ * Catch-all error handler
+ * Prevents server crashes from unexpected errors
+ */
+app.use((err, req, res, next) => {
+  console.error('Unexpected error:', err.message);
+  res.status(500).json({
+    error: 'Internal server error. Please try again later.'
+  });
+});
 
-// 6. START THE SERVER
+
+// 6. INITIALIZE SUBMISSIONS FILE
 // ================================================
 
-// Tell Express to start listening on the specified port
+// If submissions.json doesn't exist, create it with empty array
+if (!fs.existsSync(SUBMISSIONS_FILE)) {
+  try {
+    fs.writeFileSync(SUBMISSIONS_FILE, JSON.stringify([], null, 2), 'utf-8');
+    console.log('Created new submissions.json file');
+  } catch (err) {
+    console.error('Failed to create submissions.json:', err.message);
+  }
+}
+
+
+// 7. START THE SERVER
+// ================================================
+
 app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════╗
