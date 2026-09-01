@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ghush — Share your anonymous experience</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Ghush — Share your anonymous experience</h1>
+      <p class="lead">If you had a bitter experience with a Ghush transaction in Bangladesh, share it here anonymously. Your submission may appear publicly on this page once moderated.</p>
+    </header>
+
+    <section id="submit">
+      <h2>Submit anonymously</h2>
+      <form id="opinion-form">
+        <label for="message" class="sr-only">Message</label>
+        <textarea id="message" name="message" rows="6" placeholder="Describe what happened..." required></textarea>
+        <input id="location" name="location" placeholder="City or district (optional)">
+        <div class="actions">
+          <button type="submit">Submit anonymously</button>
+        </div>
+      </form>
+      <p id="status" class="status"></p>
+      <p class="note">Note: This site does not collect your identity. To receive submissions, configure a form endpoint (Formspree/Netlify) as explained in README.md.</p>
+    </section>
+
+    <section id="submissions">
+      <h2>Public submissions</h2>
+      <ul id="list" class="submissions-list">
+        <li class="muted">No public submissions yet.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p class="muted">Built to collect anonymous feedback about Ghush transactions in Bangladesh. Please moderate submissions for personally identifying information.</p>
+    </footer>
+  </main>
+
+  <script>
+    // CONFIGURE: set your form endpoint here (e.g. Formspree: https://formspree.io/f/your-id)
+    // Leave empty until you create an endpoint. See README.md for setup steps.
+    const FORM_ENDPOINT = '';
+
+    const form = document.getElementById('opinion-form');
+    const status = document.getElementById('status');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = '';
+      const data = new FormData(form);
+
+      if (!FORM_ENDPOINT) {
+        status.textContent = 'No submission endpoint configured. See README.md for setup instructions.';
+        status.className = 'status warning';
+        return;
+      }
+
+      try {
+        const res = await fetch(FORM_ENDPOINT, {
+          method: 'POST',
+          body: data,
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (res.ok) {
+          status.textContent = 'Thanks — your message was submitted anonymously.';
+          status.className = 'status success';
+          form.reset();
+        } else {
+          const body = await res.json().catch(()=>null);
+          status.textContent = 'Submission failed.' + (body && body.error ? ' ' + body.error : '');
+          status.className = 'status error';
+        }
+      } catch (err) {
+        status.textContent = 'Network error while submitting; try again later.';
+        status.className = 'status error';
+      }
+    });
+
+    // Try to load a local submissions.json to display public posts (optional)
+    async function loadSubmissions() {
+      try {
+        const res = await fetch('/submissions.json');
+        if (!res.ok) return;
+        const list = await res.json();
+        const ul = document.getElementById('list');
+        ul.innerHTML = '';
+        if (!Array.isArray(list) || list.length === 0) {
+          ul.innerHTML = '<li class="muted">No public submissions yet.</li>';
+          return;
+        }
+        list.slice().reverse().forEach(item => {
+          const li = document.createElement('li');
+          const msg = document.createElement('p');
+          msg.textContent = item.message;
+          li.appendChild(msg);
+          if (item.location) {
+            const meta = document.createElement('small');
+            meta.textContent = item.location;
+            meta.className = 'meta';
+            li.appendChild(meta);
+          }
+          ul.appendChild(li);
+        });
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    loadSubmissions();
+  </script>
+</body>
+</html>
