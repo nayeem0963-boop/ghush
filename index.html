@@ -5,12 +5,146 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Ghush — Share your anonymous experience</title>
   <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Character counter styles */
+    .character-counter {
+      font-size: 0.85rem;
+      color: #999;
+      margin-top: 0.5rem;
+      text-align: right;
+    }
+
+    .character-counter.warning {
+      color: #ff9800;
+      font-weight: 500;
+    }
+
+    .character-counter.error {
+      color: #dc3545;
+      font-weight: 500;
+    }
+
+    /* Submit button states */
+    button[type="submit"]:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    /* Responsive design */
+    @media (max-width: 768px) {
+      .container {
+        padding: 1rem;
+      }
+
+      header {
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+      }
+
+      header h1 {
+        font-size: 1.5rem;
+      }
+
+      header p.lead {
+        font-size: 1rem;
+      }
+
+      section {
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+
+      section h2 {
+        font-size: 1.25rem;
+      }
+
+      .actions {
+        flex-direction: column;
+      }
+
+      button {
+        width: 100%;
+      }
+
+      .submissions-list li {
+        padding: 1.25rem;
+      }
+
+      .submissions-list p {
+        margin-bottom: 0.5rem;
+      }
+
+      .submission-meta {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        max-width: 100%;
+        padding: 0.75rem;
+      }
+
+      header h1 {
+        font-size: 1.25rem;
+      }
+
+      header p.lead {
+        font-size: 0.95rem;
+        line-height: 1.6;
+      }
+
+      section {
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      section h2 {
+        font-size: 1.1rem;
+      }
+
+      textarea,
+      input[type="text"] {
+        font-size: 16px; /* Prevents zoom on iOS */
+      }
+
+      footer {
+        padding: 1rem;
+        font-size: 0.85rem;
+      }
+    }
+
+    /* Empty state styles */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-state p {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      color: #666;
+    }
+
+    .empty-state small {
+      display: block;
+      color: #999;
+      font-size: 0.9rem;
+    }
+  </style>
 </head>
 <body>
   <main class="container">
     <header>
       <h1>Ghush — Share your anonymous experience</h1>
-      <p class="lead">If you had a bitter experience with a Ghush transaction in Bangladesh, share it here anonymously. Your submission will be stored privately and may appear publicly on this page.</p>
+      <p class="lead">If you had a bitter experience with a Ghush transaction in Bangladesh, share it here anonymously. Your submission will be reviewed and may appear publicly.</p>
     </header>
 
     <section id="submit">
@@ -18,19 +152,22 @@
       <form id="opinion-form">
         <label for="message" class="sr-only">Message</label>
         <textarea id="message" name="message" rows="6" placeholder="Describe what happened..." required></textarea>
+        <div class="character-counter">
+          <span id="char-count">0</span> / <span id="char-max">5000</span> characters
+        </div>
         <input id="location" name="location" placeholder="City or district (optional)">
         <div class="actions">
-          <button type="submit">Submit anonymously</button>
+          <button type="submit" id="submit-button">Submit anonymously</button>
         </div>
       </form>
       <p id="status" class="status"></p>
-      <p class="note">Note: This site does not collect your name, email, or any identifying information. Your submission is completely anonymous.</p>
+      <p class="note">Note: This site does not collect your identity, email, or any identifying information. Your submission is completely anonymous.</p>
     </section>
 
     <section id="submissions">
       <h2>Public submissions</h2>
       <ul id="list" class="submissions-list">
-        <li class="muted">No public submissions yet.</li>
+        <li class="muted">Loading submissions...</li>
       </ul>
     </section>
 
@@ -41,7 +178,7 @@
 
   <script>
     // ============================================
-    // GHUSH FRONTEND - FORM SUBMISSION & DISPLAY
+    // GHUSH FRONTEND - IMPROVED USER EXPERIENCE
     // ============================================
 
     // Get references to form elements
@@ -49,9 +186,41 @@
     const statusElement = document.getElementById('status');
     const messageField = document.getElementById('message');
     const locationField = document.getElementById('location');
+    const submitButton = document.getElementById('submit-button');
+    const charCountElement = document.getElementById('char-count');
+    const charMaxElement = document.getElementById('char-max');
+    const charCounterContainer = document.querySelector('.character-counter');
+
+    // Maximum message length
+    const MAX_MESSAGE_LENGTH = 5000;
+    const WARNING_THRESHOLD = 4500; // Show warning at 4500 chars
+
+    // Flag to prevent double submissions
+    let isSubmitting = false;
 
     // ============================================
-    // FORM SUBMISSION HANDLER
+    // 1. CHARACTER COUNTER
+    // ============================================
+
+    /**
+     * Update character count as user types
+     */
+    messageField.addEventListener('input', (e) => {
+      const currentLength = e.target.value.length;
+      charCountElement.textContent = currentLength;
+
+      // Add warning class when approaching limit
+      if (currentLength > WARNING_THRESHOLD) {
+        charCounterContainer.className = 'character-counter warning';
+      } else if (currentLength >= MAX_MESSAGE_LENGTH) {
+        charCounterContainer.className = 'character-counter error';
+      } else {
+        charCounterContainer.className = 'character-counter';
+      }
+    });
+
+    // ============================================
+    // 2. FORM SUBMISSION WITH DOUBLE-CLICK PREVENTION
     // ============================================
 
     /**
@@ -61,6 +230,11 @@
     form.addEventListener('submit', async (e) => {
       // Prevent the default form behavior (page reload)
       e.preventDefault();
+
+      // PREVENT DOUBLE SUBMISSION
+      if (isSubmitting) {
+        return; // Already submitting, ignore click
+      }
 
       // Clear any previous status message
       statusElement.textContent = '';
@@ -76,6 +250,11 @@
         statusElement.className = 'status error';
         return;
       }
+
+      // Set submitting state
+      isSubmitting = true;
+      submitButton.disabled = true;
+      submitButton.textContent = '⏳ Submitting...';
 
       try {
         // Send the submission to the backend
@@ -94,33 +273,40 @@
         // Check if the response was successful (status 200-299)
         if (response.ok) {
           // SUCCESS: Show success message
-          statusElement.textContent = 'Thanks — your message was submitted anonymously.';
+          statusElement.textContent = '✓ Thanks — your message was submitted anonymously. It will appear after moderation.';
           statusElement.className = 'status success';
 
           // Clear the form fields
           form.reset();
+          charCountElement.textContent = '0';
+          charCounterContainer.className = 'character-counter';
 
-          // Reload the public submissions list to show the new submission
+          // Reload the public submissions list to reflect updated stats
           loadSubmissions();
         } else {
           // ERROR: The server returned an error status
           const data = await response.json().catch(() => null);
           const errorMessage = data && data.error ? data.error : 'Something went wrong.';
-          statusElement.textContent = 'Submission failed: ' + errorMessage;
+          statusElement.textContent = '✗ Submission failed: ' + errorMessage;
           statusElement.className = 'status error';
           // Note: Do NOT clear the form, so user can edit and try again
         }
       } catch (error) {
         // NETWORK ERROR: Could not reach the server
-        statusElement.textContent = 'Network error: Could not reach the server. Please try again later.';
+        statusElement.textContent = '✗ Network error: Could not reach the server. Please try again later.';
         statusElement.className = 'status error';
         // Note: Do NOT clear the form, so user can try again
         console.error('Submission error:', error);
+      } finally {
+        // ALWAYS reset the button state
+        isSubmitting = false;
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit anonymously';
       }
     });
 
     // ============================================
-    // LOAD AND DISPLAY PUBLIC SUBMISSIONS
+    // 3. LOAD AND DISPLAY PUBLIC SUBMISSIONS
     // ============================================
 
     /**
@@ -130,7 +316,6 @@
     function formatDate(isoString) {
       const date = new Date(isoString);
       
-      // Format options for toLocaleString
       const options = {
         year: 'numeric',
         month: 'short',
@@ -145,6 +330,7 @@
 
     /**
      * Fetch all submissions from the backend and display them
+     * Shows newest submissions first
      */
     async function loadSubmissions() {
       try {
@@ -165,15 +351,21 @@
 
         // Check if we have any submissions
         if (!Array.isArray(submissions) || submissions.length === 0) {
-          // No submissions yet, show the "empty" message
-          const emptyItem = document.createElement('li');
-          emptyItem.className = 'muted';
-          emptyItem.textContent = 'No public submissions yet.';
-          listElement.appendChild(emptyItem);
+          // No submissions yet, show a friendly empty state
+          listElement.innerHTML = `
+            <li>
+              <div class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <p>No public submissions yet.</p>
+                <small>Be the first to share your experience!</small>
+              </div>
+            </li>
+          `;
           return;
         }
 
-        // Display submissions in reverse order (newest first)
+        // DISPLAY SUBMISSIONS IN REVERSE ORDER (newest first)
+        // slice() creates a copy so we don't modify the original array
         submissions.slice().reverse().forEach(submission => {
           // Create a list item
           const li = document.createElement('li');
@@ -219,6 +411,9 @@
 
     // Load submissions when the page first loads
     loadSubmissions();
+
+    // Auto-refresh submissions every 30 seconds
+    setInterval(loadSubmissions, 30000);
   </script>
 </body>
 </html>
