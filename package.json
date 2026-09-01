@@ -1,0 +1,16 @@
+{
+  "name": "ghush",
+  "version": "1.0.0",
+  "description": "Anonymous experience-sharing website for Ghush transactions",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["anonymous", "feedback", "ghush"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
