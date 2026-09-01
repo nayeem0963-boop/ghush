@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Ghush — Share your anonymous experience</title>
-  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <main class="container">
     <header>
       <h1>Ghush — Share your anonymous experience</h1>
-      <p class="lead">If you had a bitter experience with a Ghush transaction in Bangladesh, share it here anonymously. Your submission may appear publicly on this page once moderated.</p>
+      <p class="lead">If you had a bitter experience with a Ghush transaction in Bangladesh, share it here anonymously. Your submission will be stored privately and may appear publicly on this page.</p>
     </header>
 
     <section id="submit">
@@ -24,7 +24,7 @@
         </div>
       </form>
       <p id="status" class="status"></p>
-      <p class="note">Note: This site does not collect your identity. To receive submissions, configure a form endpoint (Formspree/Netlify) as explained in README.md.</p>
+      <p class="note">Note: This site does not collect your name, email, or any identifying information. Your submission is completely anonymous.</p>
     </section>
 
     <section id="submissions">
@@ -35,14 +35,13 @@
     </section>
 
     <footer>
-      <p class="muted">Built to collect anonymous feedback about Ghush transactions in Bangladesh. Please moderate submissions for personally identifying information.</p>
+      <p class="muted">Built to collect anonymous feedback about Ghush transactions in Bangladesh.</p>
     </footer>
   </main>
 
   <script>
-    // CONFIGURE: set your form endpoint here (e.g. Formspree: https://formspree.io/f/your-id)
-    // Leave empty until you create an endpoint. See README.md for setup steps.
-    const FORM_ENDPOINT = '';
+    // Point to our local backend API (NOT an external service)
+    const FORM_ENDPOINT = '/api/submissions';
 
     const form = document.getElementById('opinion-form');
     const status = document.getElementById('status');
@@ -50,27 +49,28 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       status.textContent = '';
-      const data = new FormData(form);
-
-      if (!FORM_ENDPOINT) {
-        status.textContent = 'No submission endpoint configured. See README.md for setup instructions.';
-        status.className = 'status warning';
-        return;
-      }
+      
+      // Get the form data
+      const message = document.getElementById('message').value;
+      const location = document.getElementById('location').value;
 
       try {
+        // Send data to our backend as JSON
         const res = await fetch(FORM_ENDPOINT, {
           method: 'POST',
-          body: data,
           headers: {
+            'Content-Type': 'application/json',
             'Accept': 'application/json'
-          }
+          },
+          body: JSON.stringify({ message, location })
         });
 
         if (res.ok) {
           status.textContent = 'Thanks — your message was submitted anonymously.';
           status.className = 'status success';
           form.reset();
+          // Reload submissions to show the new one
+          loadSubmissions();
         } else {
           const body = await res.json().catch(()=>null);
           status.textContent = 'Submission failed.' + (body && body.error ? ' ' + body.error : '');
@@ -82,10 +82,10 @@
       }
     });
 
-    // Try to load a local submissions.json to display public posts (optional)
+    // Load and display public submissions from our backend
     async function loadSubmissions() {
       try {
-        const res = await fetch('/submissions.json');
+        const res = await fetch('/api/submissions');
         if (!res.ok) return;
         const list = await res.json();
         const ul = document.getElementById('list');
@@ -108,10 +108,11 @@
           ul.appendChild(li);
         });
       } catch (err) {
-        // ignore
+        // ignore load errors
       }
     }
 
+    // Load submissions when the page first loads
     loadSubmissions();
   </script>
 </body>
