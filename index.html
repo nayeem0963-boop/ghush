@@ -124,6 +124,26 @@
     // ============================================
 
     /**
+     * Convert ISO timestamp to a readable date/time string
+     * Example: 2024-01-15T10:30:00.000Z → "Jan 15, 2024 at 10:30 AM"
+     */
+    function formatDate(isoString) {
+      const date = new Date(isoString);
+      
+      // Format options for toLocaleString
+      const options = {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      };
+      
+      return date.toLocaleString('en-US', options);
+    }
+
+    /**
      * Fetch all submissions from the backend and display them
      */
     async function loadSubmissions() {
@@ -146,7 +166,10 @@
         // Check if we have any submissions
         if (!Array.isArray(submissions) || submissions.length === 0) {
           // No submissions yet, show the "empty" message
-          listElement.innerHTML = '<li class="muted">No public submissions yet.</li>';
+          const emptyItem = document.createElement('li');
+          emptyItem.className = 'muted';
+          emptyItem.textContent = 'No public submissions yet.';
+          listElement.appendChild(emptyItem);
           return;
         }
 
@@ -156,17 +179,34 @@
           const li = document.createElement('li');
 
           // Create a paragraph for the message
+          // Use textContent (not innerHTML) to prevent XSS attacks
+          // If user submitted HTML/JS, it will display as plain text
           const messageP = document.createElement('p');
           messageP.textContent = submission.message;
           li.appendChild(messageP);
+
+          // Create a container for metadata (location + date)
+          const metaContainer = document.createElement('div');
+          metaContainer.className = 'submission-meta';
 
           // If there's a location, add it as metadata
           if (submission.location) {
             const locationMeta = document.createElement('small');
             locationMeta.textContent = submission.location;
             locationMeta.className = 'meta';
-            li.appendChild(locationMeta);
+            metaContainer.appendChild(locationMeta);
           }
+
+          // Add the formatted date/time
+          if (submission.createdAt) {
+            const dateMeta = document.createElement('small');
+            dateMeta.textContent = formatDate(submission.createdAt);
+            dateMeta.className = 'meta';
+            metaContainer.appendChild(dateMeta);
+          }
+
+          // Add the metadata container to the list item
+          li.appendChild(metaContainer);
 
           // Add the list item to the list
           listElement.appendChild(li);
