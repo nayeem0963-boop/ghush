@@ -19,7 +19,7 @@ const SUBMISSIONS_FILE = path.join(__dirname, 'submissions.json');
 
 // ============================================
 // SECURITY CONSTANTS
-// ============================================
+// ================================================
 
 // Maximum message length: 5000 characters
 // Prevents extremely long submissions from wasting disk space
@@ -170,6 +170,14 @@ function validateSubmission(message, location) {
   return { valid: true };
 }
 
+/**
+ * Find a submission by ID
+ * Returns the submission or null if not found
+ */
+function findSubmissionById(submissions, id) {
+  return submissions.find(sub => sub.id === id) || null;
+}
+
 
 // 4. ROUTES
 // ================================================
@@ -184,24 +192,26 @@ app.get('/', (req, res) => {
 
 /**
  * GET /api/submissions
- * Returns all submissions as JSON
- * No validation needed - this is read-only
+ * Returns ONLY approved submissions (public feed)
+ * 
+ * Users see only submissions that have been moderated and approved
  */
 app.get('/api/submissions', (req, res) => {
-  const submissions = loadSubmissions();
-  res.json(submissions);
+  // Load all submissions
+  const allSubmissions = loadSubmissions();
+  
+  // Filter to only approved submissions
+  const approvedSubmissions = allSubmissions.filter(sub => sub.status === 'approved');
+  
+  // Return only approved ones to the public
+  res.json(approvedSubmissions);
 });
 
 /**
  * POST /api/submissions
- * Accepts a new submission and stores it
+ * Accepts a new submission and stores it with status: "pending"
  * 
- * Validates:
- * - Request body is valid JSON
- * - Message is not empty
- * - Message is not too long
- * - Location is not too long
- * - All fields are strings
+ * New submissions start as "pending" and don't appear publicly until approved
  */
 app.post('/api/submissions', (req, res) => {
   // Validate that req.body exists
@@ -224,10 +234,12 @@ app.post('/api/submissions', (req, res) => {
   
   // Create the submission object
   // All data is trimmed to remove extra whitespace
+  // NEW: status starts as "pending"
   const newSubmission = {
     id: generateId(),
     message: message.trim(),
     location: location ? location.trim() : '',
+    status: 'pending',  // Submissions don't appear publicly until approved
     createdAt: new Date().toISOString()
   };
   
@@ -244,7 +256,7 @@ app.post('/api/submissions', (req, res) => {
     // Send success response
     res.status(201).json({
       success: true,
-      message: 'Submission received and stored.'
+      message: 'Submission received. It will appear publicly after moderation.'
     });
     
   } catch (err) {
@@ -252,6 +264,119 @@ app.post('/api/submissions', (req, res) => {
     console.error('Error processing submission:', err.message);
     return res.status(500).json({
       error: 'Failed to process submission. Please try again later.'
+    });
+  }
+});
+
+
+// ============================================
+// ADMIN MODERATION ROUTES (Demo Only)
+// ============================================
+// NOTE: These endpoints are for development/demo purposes only.
+// In production, add authentication so only moderators can access these!
+
+/**
+ * GET /api/admin/submissions
+ * Returns ALL submissions (pending, approved, rejected)
+ * 
+ * For demo purposes only - shows the moderation queue
+ * WARNING: In production, add authentication!
+ */
+app.get('/api/admin/submissions', (req, res) => {
+  // Load all submissions
+  const submissions = loadSubmissions();
+  
+  // Return all submissions (including pending)
+  // In a real app, check user permissions here!
+  res.json(submissions);
+});
+
+/**
+ * POST /api/admin/submissions/:id/approve
+ * Marks a submission as "approved" so it appears publicly
+ * 
+ * URL parameter: :id = the submission ID to approve
+ */
+app.post('/api/admin/submissions/:id/approve', (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Load all submissions
+    const submissions = loadSubmissions();
+    
+    // Find the submission with this ID
+    const submission = findSubmissionById(submissions, id);
+    
+    // If not found, return error
+    if (!submission) {
+      return res.status(404).json({
+        error: 'Submission not found.'
+      });
+    }
+    
+    // Change status to "approved"
+    submission.status = 'approved';
+    submission.approvedAt = new Date().toISOString();
+    
+    // Save the updated submissions
+    saveSubmissions(submissions);
+    
+    // Send success response
+    res.json({
+      success: true,
+      message: `Submission ${id} has been approved.`,
+      submission: submission
+    });
+    
+  } catch (err) {
+    console.error('Error approving submission:', err.message);
+    return res.status(500).json({
+      error: 'Failed to approve submission.'
+    });
+  }
+});
+
+/**
+ * POST /api/admin/submissions/:id/reject
+ * Marks a submission as "rejected" so it never appears publicly
+ * 
+ * URL parameter: :id = the submission ID to reject
+ */
+app.post('/api/admin/submissions/:id/reject', (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Load all submissions
+    const submissions = loadSubmissions();
+    
+    // Find the submission with this ID
+    const submission = findSubmissionById(submissions, id);
+    
+    // If not found, return error
+    if (!submission) {
+      return res.status(404).json({
+        error: 'Submission not found.'
+      });
+    }
+    
+    // Change status to "rejected"
+    submission.status = 'rejected';
+    submission.rejectedAt = new Date().toISOString();
+    
+    // Save the updated submissions
+    saveSubmissions(submissions);
+    
+    // Send success response
+    res.json({
+      success: true,
+      message: `Submission ${id} has been rejected.`,
+      submission: submission
+    });
+    
+  } catch (err) {
+    console.error('Error rejecting submission:', err.message);
+    return res.status(500).json({
+      error: 'Failed to reject submission.'
     });
   }
 });
@@ -322,6 +447,14 @@ app.listen(PORT, () => {
 ║                                        ║
 ║   Visit http://localhost:3000 in your  ║
 ║   browser to see the site.             ║
+║                                        ║
+║   ADMIN/DEMO ENDPOINTS:                ║
+║   GET  /api/admin/submissions           ║
+║   POST /api/admin/submissions/:id/approve  ║
+║   POST /api/admin/submissions/:id/reject   ║
+║                                        ║
+║   ⚠️  These are for demo only!         ║
+║   Add authentication in production!    ║
 ╚════════════════════════════════════════╝
   `);
 });
