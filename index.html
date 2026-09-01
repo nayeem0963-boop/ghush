@@ -40,75 +40,140 @@
   </main>
 
   <script>
-    // Point to our local backend API (NOT an external service)
-    const FORM_ENDPOINT = '/api/submissions';
+    // ============================================
+    // GHUSH FRONTEND - FORM SUBMISSION & DISPLAY
+    // ============================================
 
+    // Get references to form elements
     const form = document.getElementById('opinion-form');
-    const status = document.getElementById('status');
+    const statusElement = document.getElementById('status');
+    const messageField = document.getElementById('message');
+    const locationField = document.getElementById('location');
 
+    // ============================================
+    // FORM SUBMISSION HANDLER
+    // ============================================
+
+    /**
+     * Listen for form submission
+     * When user clicks "Submit anonymously", this function runs
+     */
     form.addEventListener('submit', async (e) => {
+      // Prevent the default form behavior (page reload)
       e.preventDefault();
-      status.textContent = '';
-      
-      // Get the form data
-      const message = document.getElementById('message').value;
-      const location = document.getElementById('location').value;
+
+      // Clear any previous status message
+      statusElement.textContent = '';
+      statusElement.className = 'status';
+
+      // Get the user's input
+      const message = messageField.value.trim();
+      const location = locationField.value.trim();
+
+      // Validate: message cannot be empty
+      if (!message) {
+        statusElement.textContent = 'Please enter a message.';
+        statusElement.className = 'status error';
+        return;
+      }
 
       try {
-        // Send data to our backend as JSON
-        const res = await fetch(FORM_ENDPOINT, {
+        // Send the submission to the backend
+        const response = await fetch('/api/submissions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ message, location })
+          body: JSON.stringify({ 
+            message: message,
+            location: location
+          })
         });
 
-        if (res.ok) {
-          status.textContent = 'Thanks — your message was submitted anonymously.';
-          status.className = 'status success';
+        // Check if the response was successful (status 200-299)
+        if (response.ok) {
+          // SUCCESS: Show success message
+          statusElement.textContent = 'Thanks — your message was submitted anonymously.';
+          statusElement.className = 'status success';
+
+          // Clear the form fields
           form.reset();
-          // Reload submissions to show the new one
+
+          // Reload the public submissions list to show the new submission
           loadSubmissions();
         } else {
-          const body = await res.json().catch(()=>null);
-          status.textContent = 'Submission failed.' + (body && body.error ? ' ' + body.error : '');
-          status.className = 'status error';
+          // ERROR: The server returned an error status
+          const data = await response.json().catch(() => null);
+          const errorMessage = data && data.error ? data.error : 'Something went wrong.';
+          statusElement.textContent = 'Submission failed: ' + errorMessage;
+          statusElement.className = 'status error';
+          // Note: Do NOT clear the form, so user can edit and try again
         }
-      } catch (err) {
-        status.textContent = 'Network error while submitting; try again later.';
-        status.className = 'status error';
+      } catch (error) {
+        // NETWORK ERROR: Could not reach the server
+        statusElement.textContent = 'Network error: Could not reach the server. Please try again later.';
+        statusElement.className = 'status error';
+        // Note: Do NOT clear the form, so user can try again
+        console.error('Submission error:', error);
       }
     });
 
-    // Load and display public submissions from our backend
+    // ============================================
+    // LOAD AND DISPLAY PUBLIC SUBMISSIONS
+    // ============================================
+
+    /**
+     * Fetch all submissions from the backend and display them
+     */
     async function loadSubmissions() {
       try {
-        const res = await fetch('/api/submissions');
-        if (!res.ok) return;
-        const list = await res.json();
-        const ul = document.getElementById('list');
-        ul.innerHTML = '';
-        if (!Array.isArray(list) || list.length === 0) {
-          ul.innerHTML = '<li class="muted">No public submissions yet.</li>';
+        // Request the list of submissions from the backend
+        const response = await fetch('/api/submissions');
+
+        // If the response failed, stop here
+        if (!response.ok) return;
+
+        // Parse the JSON response into an array
+        const submissions = await response.json();
+
+        // Get the list element where we'll display submissions
+        const listElement = document.getElementById('list');
+
+        // Clear the previous list
+        listElement.innerHTML = '';
+
+        // Check if we have any submissions
+        if (!Array.isArray(submissions) || submissions.length === 0) {
+          // No submissions yet, show the "empty" message
+          listElement.innerHTML = '<li class="muted">No public submissions yet.</li>';
           return;
         }
-        list.slice().reverse().forEach(item => {
+
+        // Display submissions in reverse order (newest first)
+        submissions.slice().reverse().forEach(submission => {
+          // Create a list item
           const li = document.createElement('li');
-          const msg = document.createElement('p');
-          msg.textContent = item.message;
-          li.appendChild(msg);
-          if (item.location) {
-            const meta = document.createElement('small');
-            meta.textContent = item.location;
-            meta.className = 'meta';
-            li.appendChild(meta);
+
+          // Create a paragraph for the message
+          const messageP = document.createElement('p');
+          messageP.textContent = submission.message;
+          li.appendChild(messageP);
+
+          // If there's a location, add it as metadata
+          if (submission.location) {
+            const locationMeta = document.createElement('small');
+            locationMeta.textContent = submission.location;
+            locationMeta.className = 'meta';
+            li.appendChild(locationMeta);
           }
-          ul.appendChild(li);
+
+          // Add the list item to the list
+          listElement.appendChild(li);
         });
-      } catch (err) {
-        // ignore load errors
+      } catch (error) {
+        // If there's an error loading submissions, silently ignore it
+        console.error('Error loading submissions:', error);
       }
     }
 
