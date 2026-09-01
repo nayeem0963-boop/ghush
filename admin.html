@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ghush — Admin Moderation Panel</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Admin-specific styles */
+    .admin-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .admin-header {
+      text-align: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 2px solid #ddd;
+    }
+
+    .admin-header h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #222;
+    }
+
+    .admin-header p {
+      color: #666;
+      font-size: 0.95rem;
+    }
+
+    .warning-banner {
+      background-color: #fff3cd;
+      border: 1px solid #ffc107;
+      color: #856404;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .stat-card .number {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #007bff;
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-card .label {
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .pending-section {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .pending-section h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+      color: #222;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 0.75rem;
+    }
+
+    .submission-card {
+      padding: 1.5rem;
+      background-color: #f9f9f9;
+      border-left: 4px solid #ffc107;
+      border-radius: 4px;
+      margin-bottom: 1.5rem;
+    }
+
+    .submission-card .message {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: #444;
+      margin-bottom: 1rem;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .submission-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    .submission-meta .meta-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .submission-meta .label {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 0.25rem;
+    }
+
+    .submission-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: flex-start;
+    }
+
+    .btn-approve {
+      background-color: #28a745;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+
+    .btn-approve:hover {
+      background-color: #218838;
+    }
+
+    .btn-approve:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-reject {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+
+    .btn-reject:hover {
+      background-color: #c82333;
+    }
+
+    .btn-reject:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: #999;
+    }
+
+    .empty-state p {
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-state small {
+      display: block;
+      color: #bbb;
+      font-size: 0.9rem;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #666;
+    }
+
+    .error-message {
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+
+    .success-message {
+      background-color: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-bottom: 1rem;
+      color: #007bff;
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+
+    .submission-id {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-container">
+    <!-- Back link -->
+    <a href="/" class="back-link">← Back to Public Site</a>
+
+    <!-- Admin Header -->
+    <header class="admin-header">
+      <h1>Ghush — Admin Moderation Panel</h1>
+      <p>Review and moderate user submissions</p>
+    </header>
+
+    <!-- Warning Banner -->
+    <div class="warning-banner">
+      ⚠️ <strong>Demo Mode:</strong> This moderation panel is for demonstration only. 
+      In production, add authentication to restrict access to authorized moderators only.
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="number" id="pending-count">0</div>
+        <div class="label">Pending Review</div>
+      </div>
+      <div class="stat-card">
+        <div class="number" id="approved-count">0</div>
+        <div class="label">Approved</div>
+      </div>
+      <div class="stat-card">
+        <div class="number" id="rejected-count">0</div>
+        <div class="label">Rejected</div>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="message-container"></div>
+
+    <!-- Pending Submissions Section -->
+    <section class="pending-section">
+      <h2>Pending Submissions</h2>
+      <div id="submissions-container">
+        <div class="loading">Loading submissions...</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ============================================
+    // ADMIN MODERATION PANEL - JAVASCRIPT
+    // ============================================
+
+    /**
+     * Load all submissions and display pending ones
+     */
+    async function loadSubmissions() {
+      try {
+        // Fetch all submissions from admin endpoint
+        const response = await fetch('/api/admin/submissions');
+
+        if (!response.ok) {
+          showError('Failed to load submissions from server.');
+          return;
+        }
+
+        const submissions = await response.json();
+
+        // Update stats
+        const pending = submissions.filter(s => s.status === 'pending').length;
+        const approved = submissions.filter(s => s.status === 'approved').length;
+        const rejected = submissions.filter(s => s.status === 'rejected').length;
+
+        document.getElementById('pending-count').textContent = pending;
+        document.getElementById('approved-count').textContent = approved;
+        document.getElementById('rejected-count').textContent = rejected;
+
+        // Filter to only pending submissions
+        const pendingSubmissions = submissions.filter(s => s.status === 'pending');
+
+        // Display pending submissions
+        displaySubmissions(pendingSubmissions);
+
+      } catch (error) {
+        console.error('Error loading submissions:', error);
+        showError('Network error: Could not reach the server.');
+      }
+    }
+
+    /**
+     * Display pending submissions in the UI
+     */
+    function displaySubmissions(submissions) {
+      const container = document.getElementById('submissions-container');
+
+      // If no pending submissions, show empty state
+      if (!submissions || submissions.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>✓ All submissions reviewed!</p>
+            <small>No pending submissions at this time.</small>
+          </div>
+        `;
+        return;
+      }
+
+      // Create HTML for each pending submission
+      container.innerHTML = submissions.map(submission => `
+        <div class="submission-card">
+          <div class="message">${escapeHtml(submission.message)}</div>
+          
+          <div class="submission-meta">
+            ${submission.location ? `
+              <div class="meta-item">
+                <span class="label">Location:</span>
+                <span>${escapeHtml(submission.location)}</span>
+              </div>
+            ` : ''}
+            
+            <div class="meta-item">
+              <span class="label">Submitted:</span>
+              <span>${formatDate(submission.createdAt)}</span>
+            </div>
+          </div>
+
+          <div class="submission-id">ID: ${submission.id}</div>
+
+          <div class="submission-actions">
+            <button class="btn-approve" onclick="approveSubmission('${submission.id}')">
+              ✓ Approve
+            </button>
+            <button class="btn-reject" onclick="rejectSubmission('${submission.id}')">
+              ✗ Reject
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    /**
+     * Format ISO date to readable format
+     */
+    function formatDate(isoString) {
+      const date = new Date(isoString);
+      const options = {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      };
+      return date.toLocaleString('en-US', options);
+    }
+
+    /**
+     * Escape HTML to prevent XSS attacks
+     */
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    /**
+     * Show error message
+     */
+    function showError(message) {
+      const container = document.getElementById('message-container');
+      container.innerHTML = `
+        <div class="error-message">
+          ${escapeHtml(message)}
+        </div>
+      `;
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        container.innerHTML = '';
+      }, 5000);
+    }
+
+    /**
+     * Show success message
+     */
+    function showSuccess(message) {
+      const container = document.getElementById('message-container');
+      container.innerHTML = `
+        <div class="success-message">
+          ${escapeHtml(message)}
+        </div>
+      `;
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        container.innerHTML = '';
+      }, 3000);
+    }
+
+    /**
+     * Approve a submission
+     */
+    async function approveSubmission(id) {
+      // Disable button to prevent double-clicks
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Approving...';
+
+      try {
+        // Send approve request to server
+        const response = await fetch(`/api/admin/submissions/${id}/approve`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          const errorMsg = data && data.error ? data.error : 'Failed to approve submission.';
+          showError(errorMsg);
+          btn.disabled = false;
+          btn.textContent = '✓ Approve';
+          return;
+        }
+
+        // Show success message
+        showSuccess('Submission approved! It is now public.');
+
+        // Reload submissions after a short delay
+        setTimeout(loadSubmissions, 1500);
+
+      } catch (error) {
+        console.error('Error approving submission:', error);
+        showError('Network error: Could not reach the server.');
+        btn.disabled = false;
+        btn.textContent = '✓ Approve';
+      }
+    }
+
+    /**
+     * Reject a submission
+     */
+    async function rejectSubmission(id) {
+      // Ask for confirmation
+      if (!confirm('Are you sure you want to reject this submission? It will be hidden permanently.')) {
+        return;
+      }
+
+      // Disable button to prevent double-clicks
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = 'Rejecting...';
+
+      try {
+        // Send reject request to server
+        const response = await fetch(`/api/admin/submissions/${id}/reject`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          const errorMsg = data && data.error ? data.error : 'Failed to reject submission.';
+          showError(errorMsg);
+          btn.disabled = false;
+          btn.textContent = '✗ Reject';
+          return;
+        }
+
+        // Show success message
+        showSuccess('Submission rejected and hidden.');
+
+        // Reload submissions after a short delay
+        setTimeout(loadSubmissions, 1500);
+
+      } catch (error) {
+        console.error('Error rejecting submission:', error);
+        showError('Network error: Could not reach the server.');
+        btn.disabled = false;
+        btn.textContent = '✗ Reject';
+      }
+    }
+
+    // Load submissions when page loads
+    loadSubmissions();
+
+    // Auto-refresh every 30 seconds
+    setInterval(loadSubmissions, 30000);
+  </script>
+</body>
+</html>
